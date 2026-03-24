@@ -731,13 +731,22 @@ void main () {
 
 `.trim();
 
+// SHARP scene: camera at origin, looking into +Z at scene center (~2.2)
+// Identity-like view matrix positioned to face the scene
 let defaultViewMatrix = [
-    0.47, 0.04, 0.88, 0, -0.11, 0.99, 0.02, 0, -0.88, -0.11, 0.47, 0, 0.07,
-    0.03, 6.55, 1,
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
 ];
 let viewMatrix = defaultViewMatrix;
+
+// Track total orbit rotation to clamp it
+let totalRotX = 0;
+let totalRotY = 0;
+const MAX_ORBIT_ANGLE = 0.5; // ~30 degrees max orbit in any direction
 async function main() {
-    let carousel = true;
+    let carousel = false; // Disable auto-rotation
     const params = new URLSearchParams(location.search);
     try {
         viewMatrix = JSON.parse(decodeURIComponent(location.hash.slice(1)));
@@ -920,134 +929,47 @@ async function main() {
     let activeKeys = [];
     let currentCameraIndex = 0;
 
-    window.addEventListener("keydown", (e) => {
-        // if (document.activeElement != document.body) return;
-        carousel = false;
-        if (!activeKeys.includes(e.code)) activeKeys.push(e.code);
-        if (/\d/.test(e.key)) {
-            currentCameraIndex = parseInt(e.key);
-            camera = cameras[currentCameraIndex];
-            viewMatrix = getViewMatrix(camera);
-        }
-        if (["-", "_"].includes(e.key)) {
-            currentCameraIndex =
-                (currentCameraIndex + cameras.length - 1) % cameras.length;
-            viewMatrix = getViewMatrix(cameras[currentCameraIndex]);
-        }
-        if (["+", "="].includes(e.key)) {
-            currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
-            viewMatrix = getViewMatrix(cameras[currentCameraIndex]);
-        }
-        camid.innerText = "cam  " + currentCameraIndex;
-        if (e.code == "KeyV") {
-            location.hash =
-                "#" +
-                JSON.stringify(
-                    viewMatrix.map((k) => Math.round(k * 100) / 100),
-                );
-            camid.innerText = "";
-        } else if (e.code === "KeyP") {
-            carousel = true;
-            camid.innerText = "";
-        }
-    });
-    window.addEventListener("keyup", (e) => {
-        activeKeys = activeKeys.filter((k) => k !== e.code);
-    });
-    window.addEventListener("blur", () => {
-        activeKeys = [];
-    });
+    // Keyboard controls disabled — camera is fixed
+    window.addEventListener("keydown", (e) => {});
+    window.addEventListener("keyup", (e) => {});
+    window.addEventListener("blur", () => { activeKeys = []; });
 
-    window.addEventListener(
-        "wheel",
-        (e) => {
-            carousel = false;
-            e.preventDefault();
-            const lineHeight = 10;
-            const scale =
-                e.deltaMode == 1
-                    ? lineHeight
-                    : e.deltaMode == 2
-                      ? innerHeight
-                      : 1;
-            let inv = invert4(viewMatrix);
-            if (e.shiftKey) {
-                inv = translate4(
-                    inv,
-                    (e.deltaX * scale) / innerWidth,
-                    (e.deltaY * scale) / innerHeight,
-                    0,
-                );
-            } else if (e.ctrlKey || e.metaKey) {
-                // inv = rotate4(inv,  (e.deltaX * scale) / innerWidth,  0, 0, 1);
-                // inv = translate4(inv,  0, (e.deltaY * scale) / innerHeight, 0);
-                // let preY = inv[13];
-                inv = translate4(
-                    inv,
-                    0,
-                    0,
-                    (-10 * (e.deltaY * scale)) / innerHeight,
-                );
-                // inv[13] = preY;
-            } else {
-                let d = 4;
-                inv = translate4(inv, 0, 0, d);
-                inv = rotate4(inv, -(e.deltaX * scale) / innerWidth, 0, 1, 0);
-                inv = rotate4(inv, (e.deltaY * scale) / innerHeight, 1, 0, 0);
-                inv = translate4(inv, 0, 0, -d);
-            }
-
-            viewMatrix = invert4(inv);
-        },
-        { passive: false },
-    );
+    // Scroll/wheel controls disabled — camera is fixed
+    window.addEventListener("wheel", (e) => { e.preventDefault(); }, { passive: false });
 
     let startX, startY, down;
     canvas.addEventListener("mousedown", (e) => {
-        carousel = false;
         e.preventDefault();
         startX = e.clientX;
         startY = e.clientY;
-        down = e.ctrlKey || e.metaKey ? 2 : 1;
+        down = 1; // Only orbit, no pan mode
     });
     canvas.addEventListener("contextmenu", (e) => {
-        carousel = false;
-        e.preventDefault();
-        startX = e.clientX;
-        startY = e.clientY;
-        down = 2;
+        e.preventDefault(); // Disable right-click pan
     });
 
     canvas.addEventListener("mousemove", (e) => {
         e.preventDefault();
         if (down == 1) {
-            let inv = invert4(viewMatrix);
-            let dx = (5 * (e.clientX - startX)) / innerWidth;
-            let dy = (5 * (e.clientY - startY)) / innerHeight;
-            let d = 4;
+            let dx = (3 * (e.clientX - startX)) / innerWidth;
+            let dy = (3 * (e.clientY - startY)) / innerHeight;
 
+            // Clamp total rotation to MAX_ORBIT_ANGLE
+            let newRotX = totalRotX + dx;
+            let newRotY = totalRotY - dy;
+            if (newRotX > MAX_ORBIT_ANGLE) dx = MAX_ORBIT_ANGLE - totalRotX;
+            if (newRotX < -MAX_ORBIT_ANGLE) dx = -MAX_ORBIT_ANGLE - totalRotX;
+            if (newRotY > MAX_ORBIT_ANGLE) dy = -(MAX_ORBIT_ANGLE - totalRotY);
+            if (newRotY < -MAX_ORBIT_ANGLE) dy = -(-MAX_ORBIT_ANGLE - totalRotY);
+            totalRotX += dx;
+            totalRotY += -dy;
+
+            let inv = invert4(viewMatrix);
+            let d = 2.2; // Orbit around scene center (~2.2 units into Z)
             inv = translate4(inv, 0, 0, d);
             inv = rotate4(inv, dx, 0, 1, 0);
             inv = rotate4(inv, -dy, 1, 0, 0);
             inv = translate4(inv, 0, 0, -d);
-            // let postAngle = Math.atan2(inv[0], inv[10])
-            // inv = rotate4(inv, postAngle - preAngle, 0, 0, 1)
-            // console.log(postAngle)
-            viewMatrix = invert4(inv);
-
-            startX = e.clientX;
-            startY = e.clientY;
-        } else if (down == 2) {
-            let inv = invert4(viewMatrix);
-            // inv = rotateY(inv, );
-            // let preY = inv[13];
-            inv = translate4(
-                inv,
-                (-10 * (e.clientX - startX)) / innerWidth,
-                0,
-                (10 * (e.clientY - startY)) / innerHeight,
-            );
-            // inv[13] = preY;
             viewMatrix = invert4(inv);
 
             startX = e.clientX;
@@ -1063,22 +985,14 @@ async function main() {
 
     let altX = 0,
         altY = 0;
+    // Touch: orbit only (single finger), no pinch-zoom or two-finger pan
     canvas.addEventListener(
         "touchstart",
         (e) => {
             e.preventDefault();
             if (e.touches.length === 1) {
-                carousel = false;
                 startX = e.touches[0].clientX;
                 startY = e.touches[0].clientY;
-                down = 1;
-            } else if (e.touches.length === 2) {
-                // console.log('beep')
-                carousel = false;
-                startX = e.touches[0].clientX;
-                altX = e.touches[1].clientX;
-                startY = e.touches[0].clientY;
-                altY = e.touches[1].clientY;
                 down = 1;
             }
         },
@@ -1089,62 +1003,29 @@ async function main() {
         (e) => {
             e.preventDefault();
             if (e.touches.length === 1 && down) {
-                let inv = invert4(viewMatrix);
-                let dx = (4 * (e.touches[0].clientX - startX)) / innerWidth;
-                let dy = (4 * (e.touches[0].clientY - startY)) / innerHeight;
+                let dx = (3 * (e.touches[0].clientX - startX)) / innerWidth;
+                let dy = (3 * (e.touches[0].clientY - startY)) / innerHeight;
 
-                let d = 4;
+                // Clamp total rotation
+                let newRotX = totalRotX + dx;
+                let newRotY = totalRotY - dy;
+                if (newRotX > MAX_ORBIT_ANGLE) dx = MAX_ORBIT_ANGLE - totalRotX;
+                if (newRotX < -MAX_ORBIT_ANGLE) dx = -MAX_ORBIT_ANGLE - totalRotX;
+                if (newRotY > MAX_ORBIT_ANGLE) dy = -(MAX_ORBIT_ANGLE - totalRotY);
+                if (newRotY < -MAX_ORBIT_ANGLE) dy = -(-MAX_ORBIT_ANGLE - totalRotY);
+                totalRotX += dx;
+                totalRotY += -dy;
+
+                let inv = invert4(viewMatrix);
+                let d = 2.2;
                 inv = translate4(inv, 0, 0, d);
-                // inv = translate4(inv,  -x, -y, -z);
-                // inv = translate4(inv,  x, y, z);
                 inv = rotate4(inv, dx, 0, 1, 0);
                 inv = rotate4(inv, -dy, 1, 0, 0);
                 inv = translate4(inv, 0, 0, -d);
-
                 viewMatrix = invert4(inv);
 
                 startX = e.touches[0].clientX;
                 startY = e.touches[0].clientY;
-            } else if (e.touches.length === 2) {
-                // alert('beep')
-                const dtheta =
-                    Math.atan2(startY - altY, startX - altX) -
-                    Math.atan2(
-                        e.touches[0].clientY - e.touches[1].clientY,
-                        e.touches[0].clientX - e.touches[1].clientX,
-                    );
-                const dscale =
-                    Math.hypot(startX - altX, startY - altY) /
-                    Math.hypot(
-                        e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY,
-                    );
-                const dx =
-                    (e.touches[0].clientX +
-                        e.touches[1].clientX -
-                        (startX + altX)) /
-                    2;
-                const dy =
-                    (e.touches[0].clientY +
-                        e.touches[1].clientY -
-                        (startY + altY)) /
-                    2;
-                let inv = invert4(viewMatrix);
-                // inv = translate4(inv,  0, 0, d);
-                inv = rotate4(inv, dtheta, 0, 0, 1);
-
-                inv = translate4(inv, -dx / innerWidth, -dy / innerHeight, 0);
-
-                // let preY = inv[13];
-                inv = translate4(inv, 0, 0, 3 * (1 - dscale));
-                // inv[13] = preY;
-
-                viewMatrix = invert4(inv);
-
-                startX = e.touches[0].clientX;
-                altX = e.touches[1].clientX;
-                startY = e.touches[0].clientY;
-                altY = e.touches[1].clientY;
             }
         },
         { passive: false },
@@ -1186,32 +1067,7 @@ async function main() {
             activeKeys.includes("ShiftLeft") ||
             activeKeys.includes("ShiftRight");
 
-        if (activeKeys.includes("ArrowUp")) {
-            if (shiftKey) {
-                inv = translate4(inv, 0, -0.03, 0);
-            } else {
-                inv = translate4(inv, 0, 0, 0.1);
-            }
-        }
-        if (activeKeys.includes("ArrowDown")) {
-            if (shiftKey) {
-                inv = translate4(inv, 0, 0.03, 0);
-            } else {
-                inv = translate4(inv, 0, 0, -0.1);
-            }
-        }
-        if (activeKeys.includes("ArrowLeft"))
-            inv = translate4(inv, -0.03, 0, 0);
-        //
-        if (activeKeys.includes("ArrowRight"))
-            inv = translate4(inv, 0.03, 0, 0);
-        // inv = rotate4(inv, 0.01, 0, 1, 0);
-        if (activeKeys.includes("KeyA")) inv = rotate4(inv, -0.01, 0, 1, 0);
-        if (activeKeys.includes("KeyD")) inv = rotate4(inv, 0.01, 0, 1, 0);
-        if (activeKeys.includes("KeyQ")) inv = rotate4(inv, 0.01, 0, 0, 1);
-        if (activeKeys.includes("KeyE")) inv = rotate4(inv, -0.01, 0, 0, 1);
-        if (activeKeys.includes("KeyW")) inv = rotate4(inv, 0.005, 1, 0, 0);
-        if (activeKeys.includes("KeyS")) inv = rotate4(inv, -0.005, 1, 0, 0);
+        // Keyboard movement disabled — camera is fixed
 
         const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
         let isJumping = activeKeys.includes("Space");
