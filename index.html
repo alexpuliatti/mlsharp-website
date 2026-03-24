@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SHARP — 3D Gaussian Splat Viewer</title>
-    <meta name="description" content="Interactive 3D Gaussian Splat viewer powered by Apple's SHARP model. Explore photorealistic 3D scenes from single photographs." />
+    <meta name="description" content="Interactive 3D Gaussian Splat viewer powered by Apple's SHARP model." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <!-- Splat canvas container -->
-    <div id="splat-container"></div>
+    <!-- Splat viewer iframe -->
+    <iframe id="splat-frame" src="about:blank" allowfullscreen></iframe>
 
     <!-- Top overlay -->
     <header id="header">
@@ -23,30 +23,21 @@
       <p class="tagline">3D Gaussian Splats from Single Images</p>
     </header>
 
-    <!-- Loading overlay -->
-    <div id="loading-overlay">
-      <div class="loader">
-        <div class="spinner"></div>
-        <p class="loading-text">Loading scene…</p>
-        <p class="loading-hint" id="loading-hint"></p>
-      </div>
-    </div>
-
     <!-- Scene selector -->
     <nav id="scene-selector">
-      <button class="scene-btn active" data-scene="0" aria-label="Scene 1">
+      <button class="scene-btn active" data-splat="/splats/1apex.splat" aria-label="Scene 1">
         <span class="scene-number">01</span>
         <span class="scene-label">Apex I</span>
       </button>
-      <button class="scene-btn" data-scene="1" aria-label="Scene 2">
+      <button class="scene-btn" data-splat="/splats/2apex.splat" aria-label="Scene 2">
         <span class="scene-number">02</span>
         <span class="scene-label">Apex II</span>
       </button>
-      <button class="scene-btn" data-scene="2" aria-label="Scene 3">
+      <button class="scene-btn" data-splat="/splats/3apex.splat" aria-label="Scene 3">
         <span class="scene-number">03</span>
         <span class="scene-label">Apex III</span>
       </button>
-      <button class="scene-btn" data-scene="3" aria-label="Scene 4">
+      <button class="scene-btn" data-splat="/splats/4apex.splat" aria-label="Scene 4">
         <span class="scene-number">04</span>
         <span class="scene-label">Apex IV</span>
       </button>
@@ -55,19 +46,45 @@
     <!-- Controls hint -->
     <div id="controls-hint">
       <div class="hint-item">
-        <kbd>Left Drag</kbd>
+        <kbd>Click + Drag</kbd>
         <span>Orbit</span>
-      </div>
-      <div class="hint-item">
-        <kbd>Right Drag</kbd>
-        <span>Pan</span>
       </div>
       <div class="hint-item">
         <kbd>Scroll</kbd>
         <span>Zoom</span>
       </div>
+      <div class="hint-item">
+        <kbd>Arrow Keys</kbd>
+        <span>Move</span>
+      </div>
     </div>
 
-    <script type="module" src="./main.js"></script>
+    <script>
+      const frame = document.getElementById("splat-frame");
+      const buttons = document.querySelectorAll(".scene-btn");
+      const origin = window.location.origin;
+
+      function loadSplat(splatPath) {
+        const fullUrl = origin + splatPath;
+        frame.src = `./viewer.html?url=${encodeURIComponent(fullUrl)}`;
+      }
+
+      buttons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          buttons.forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          loadSplat(btn.dataset.splat);
+        });
+      });
+
+      document.addEventListener("keydown", (e) => {
+        const num = parseInt(e.key, 10);
+        if (num >= 1 && num <= 4) {
+          buttons[num - 1].click();
+        }
+      });
+      // Load first scene on page load
+      loadSplat("/splats/1apex.splat");
+    </script>
   </body>
 </html>
